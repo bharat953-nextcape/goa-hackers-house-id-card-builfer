@@ -1,0 +1,6 @@
+{
+  "name": "HH Goa 2026 ID Generator",
+  "description": "A web tool where users can upload a photo and generate an official Hacker House Goa 2026 builder ID badge with lanyard and custom titles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
