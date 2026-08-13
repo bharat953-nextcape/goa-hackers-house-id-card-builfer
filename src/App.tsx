@@ -199,7 +199,7 @@ export default function App() {
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-black">
-          <QRCode value="https://example.com/hackerhouse-goa" size={150} />
+          <QRCode value="https://hhgoa.com/" size={150} />
         </div>
 
         <div className="text-center w-full space-y-4 font-['Space_Mono'] text-[#FFD700] text-xs md:text-sm font-bold tracking-widest uppercase">
