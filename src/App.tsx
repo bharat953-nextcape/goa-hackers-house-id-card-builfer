@@ -67,6 +67,7 @@ export default function App() {
     fileName: string;
     xUrl: string;
     copied: boolean;
+    file?: File;
   } | null>(null);
   const [copiedText, setCopiedText] = useState(false);
   
@@ -209,14 +210,18 @@ export default function App() {
 
     // Fallback to html-to-image
     try {
+      card.style.opacity = '1';
+      card.style.visibility = 'visible';
       const dataUrl = await toJpeg(card, {
         quality: 0.95,
         pixelRatio: 2.5,
         backgroundColor: '#0c5933',
       });
+      card.style.opacity = '0';
       const res = await fetch(dataUrl);
       return await res.blob();
     } catch (err) {
+      card.style.opacity = '0';
       console.error("All image capture methods failed:", err);
       return null;
     }
@@ -258,13 +263,13 @@ export default function App() {
     }
 
     const button = document.getElementById("twitter-share") as HTMLButtonElement | null;
-    let twitterWindow: Window | null = null;
 
     const passWebsite = window.location.origin.includes('localhost')
       ? 'https://hhgoa.com/'
       : window.location.href;
     const shareText = `I'm building at Hacker House Goa 2026! 🌴💻\n\n📍 Official Site: https://hhgoa.com/\n🎫 Get Your ID Pass: ${passWebsite}\n\n#FrameInGoa @247pmstudio`;
-    const twitterUrl = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(shareText);
+    const fileName = `hh-goa-2026-${name.toLowerCase().replace(/\s+/g, '-') || 'id-pass'}.png`;
+    const xUrl = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(shareText);
 
     try {
       setIsProcessing(true);
@@ -272,64 +277,66 @@ export default function App() {
         button.disabled = true;
       }
 
-      // Pre-open window immediately synchronously on click to bypass popup blockers
-      twitterWindow = window.open("about:blank", "_blank");
-
       const blob = await captureCardPng();
-      const fileName = `hh-goa-2026-${name.toLowerCase().replace(/\s+/g, '-') || 'id-pass'}.png`;
-
-      if (blob) {
-        const file = new File([blob], fileName, { type: "image/png" });
-
-        // 1. Try native mobile share if available
-        if (
-          navigator.share &&
-          navigator.canShare &&
-          navigator.canShare({ files: [file] })
-        ) {
-          try {
-            if (twitterWindow && !twitterWindow.closed) {
-              twitterWindow.close();
-              twitterWindow = null;
-            }
-            await navigator.share({
-              text: shareText,
-              files: [file],
-            });
-            return;
-          } catch (shareErr) {
-            if ((shareErr as Error).name === "AbortError") {
-              return;
-            }
-            console.log("Native share failed or cancelled, using fallback", shareErr);
-          }
-        }
-
-        // 2. Download the PNG image for the user to upload to Twitter
-        const imageUrl = URL.createObjectURL(blob);
-        const downloadLink = document.createElement("a");
-        downloadLink.href = imageUrl;
-        downloadLink.download = fileName;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        downloadLink.remove();
-        URL.revokeObjectURL(imageUrl);
+      if (!blob) {
+        throw new Error("Could not create ID card image");
       }
 
-      // 3. Direct the pre-opened window (or open a new window) to the official Twitter composer URL
-      if (twitterWindow && !twitterWindow.closed) {
-        twitterWindow.location.href = twitterUrl;
-      } else {
-        window.open(twitterUrl, "_blank");
+      const file = new File([blob], fileName, { type: "image/png" });
+
+      // 1. Copy PNG blob to Clipboard for Ctrl+V paste if supported
+      let copied = false;
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+          copied = true;
+        }
+      } catch (clipErr) {
+        console.log("Clipboard copy skipped or unsupported", clipErr);
+      }
+
+      // 2. Download the captured ID card PNG
+      const imageUrl = URL.createObjectURL(blob);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = imageUrl;
+      downloadLink.download = fileName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+
+      // 3. Set Share Modal Data to show Twitter share options
+      setShareModalData({
+        image: imageUrl,
+        shareText,
+        fileName,
+        xUrl,
+        file,
+        copied,
+      });
+
+      // 4. Try native mobile share if available as an additional popup prompt
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({ files: [file] })
+      ) {
+        try {
+          await navigator.share({
+            text: shareText,
+            files: [file],
+          });
+        } catch (shareErr) {
+          if ((shareErr as Error).name !== "AbortError") {
+            console.log("Native Web Share skipped/failed", shareErr);
+          }
+        }
       }
 
     } catch (error) {
       console.error("Twitter share failed:", error);
-      if (twitterWindow && !twitterWindow.closed) {
-        twitterWindow.location.href = twitterUrl;
-      } else {
-        window.open(twitterUrl, "_blank");
-      }
+      alert("Failed to prepare Twitter share. Please try again.");
     } finally {
       setIsProcessing(false);
       if (button) {
@@ -533,31 +540,51 @@ export default function App() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-3">
                 <a
                   href={shareModalData.xUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => setShareModalData(null)}
-                  className="flex-1 bg-gradient-to-r from-[#FF007F] to-pink-600 hover:from-pink-500 hover:to-pink-600 text-white font-['Space_Mono'] font-black py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2.5 shadow-xl hover:shadow-[#FF007F]/40 active:scale-98 transition-all uppercase tracking-wider text-sm text-center"
+                  className="w-full bg-gradient-to-r from-[#FF007F] to-pink-600 hover:from-pink-500 hover:to-pink-600 text-white font-['Space_Mono'] font-black py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2.5 shadow-xl hover:shadow-[#FF007F]/40 active:scale-98 transition-all uppercase tracking-wider text-sm text-center"
                 >
                   <Twitter className="w-5 h-5 fill-current" />
-                  <span>Open Twitter & Post (Ctrl+V)</span>
+                  <span>Open Twitter / X App & Post</span>
                   <ExternalLink className="w-4 h-4 ml-auto" />
                 </a>
 
-                <button
-                  onClick={() => {
-                    const link = document.createElement('a');
-                    link.download = shareModalData.fileName;
-                    link.href = shareModalData.image;
-                    link.click();
-                  }}
-                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 font-['Space_Mono'] font-bold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  Download
-                </button>
+                <div className="flex gap-3">
+                  {shareModalData.file && navigator.share && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.share({
+                            text: shareModalData.shareText,
+                            files: [shareModalData.file!],
+                          });
+                        } catch (e) {
+                          console.log("Share failed or cancelled", e);
+                        }
+                      }}
+                      className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-pink-400 hover:text-white border border-[#FF007F]/40 font-['Space_Mono'] font-bold py-3 px-3 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                      Share via Apps
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.download = shareModalData.fileName;
+                      link.href = shareModalData.image;
+                      link.click();
+                    }}
+                    className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 font-['Space_Mono'] font-bold py-3 px-3 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Pass
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -614,22 +641,17 @@ export default function App() {
                 initial={{ y: -50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className="flex items-center gap-6 font-['Space_Mono'] uppercase tracking-widest text-sm"
+                className="flex items-center gap-4 font-['Space_Mono'] uppercase tracking-widest text-sm"
               >
                 <a 
                   href="https://hhgoa.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hidden md:inline text-white hover:text-[#FFD700] cursor-pointer transition-colors"
+                  className="bg-[#FFD700] text-[#0c5933] font-bold px-6 py-2.5 rounded-xl border-2 border-[#FF007F] shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-white hover:text-black hover:border-black transition-all flex items-center gap-2 cursor-pointer"
                 >
-                  CHECK HYPE
+                  <span>CHECK HYPE</span>
+                  <ExternalLink className="w-4 h-4" />
                 </a>
-                <button 
-                  onClick={() => setShowIntro(false)}
-                  className="bg-[#FFD700] text-[#0c5933] font-bold px-6 py-2 border-2 border-dashed border-[#FF007F] shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-white hover:text-black hover:border-black transition-all"
-                >
-                  MAKE ID
-                </button>
               </motion.div>
             </div>
 
@@ -801,6 +823,15 @@ export default function App() {
               ID Generator
             </span>
           </div>
+          <a
+            href="https://hhgoa.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-[#FFD700] text-[#0c5933] hover:bg-white text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 border border-[#FFD700]/50 shadow-md"
+          >
+            <span>CHECK HYPE</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
       </header>
 
@@ -967,8 +998,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Export Card for clean screenshots without 3D transforms */}
-              <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, opacity: 1, pointerEvents: 'none' }}>
+              {/* Export Card for clean screenshots without 3D transforms (positioned far offscreen) */}
+              <div style={{ position: 'fixed', left: '-9999px', top: '-9999px', zIndex: -9999, pointerEvents: 'none' }}>
                 <div id="id-card" ref={cardRef} className="w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center relative overflow-visible p-2">
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="flex flex-col items-center relative z-20 drop-shadow-2xl">
