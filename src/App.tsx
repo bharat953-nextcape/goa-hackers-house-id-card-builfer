@@ -1,8 +1,9 @@
 import { useState, useRef, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import html2canvas from 'html2canvas';
 import { toJpeg } from 'html-to-image';
 import heic2any from 'heic2any';
-import { Upload, Download, Twitter, RefreshCw, Loader2, X, Rotate3D } from 'lucide-react';
+import { Upload, Download, Twitter, RefreshCw, Loader2, X, Rotate3D, Copy, Check, ExternalLink } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from './utils/cropImage';
@@ -59,7 +60,15 @@ export default function App() {
   const [title, setTitle] = useState<string>(BUILDER_TITLES[0]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
-  
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [shareModalData, setShareModalData] = useState<{
+    image: string;
+    shareText: string;
+    fileName: string;
+    xUrl: string;
+    copied: boolean;
+  } | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
   
   const [isFlipped, setIsFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -129,58 +138,204 @@ export default function App() {
     setTitle(BUILDER_TITLES[nextIndex]);
   };
 
+  const captureCardPng = async (): Promise<Blob | null> => {
+    const card = document.getElementById("id-card");
+    if (!card) {
+      console.error("ID card element (#id-card) not found");
+      return null;
+    }
+
+    // Try html2canvas first
+    try {
+      const canvas = await html2canvas(card, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: null,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const dummyCtx = document.createElement('canvas').getContext('2d');
+          const convertOklch = (str: string): string => {
+            if (!str || !str.includes('oklch')) return str;
+            return str.replace(/oklch\([^)]+\)/gi, (match) => {
+              if (dummyCtx) {
+                try {
+                  dummyCtx.fillStyle = '#000000';
+                  dummyCtx.fillStyle = match;
+                  const computed = dummyCtx.fillStyle;
+                  if (computed && computed !== '#000000') {
+                    return computed;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }
+              return 'rgba(0,0,0,0)';
+            });
+          };
+
+          // Convert oklch in all <style> elements
+          clonedDoc.querySelectorAll('style').forEach((styleEl) => {
+            if (styleEl.textContent && styleEl.textContent.includes('oklch')) {
+              styleEl.textContent = convertOklch(styleEl.textContent);
+            }
+          });
+
+          // Convert oklch in all inline style attributes
+          clonedDoc.querySelectorAll('*').forEach((el) => {
+            const styleAttr = el.getAttribute('style');
+            if (styleAttr && styleAttr.includes('oklch')) {
+              el.setAttribute('style', convertOklch(styleAttr));
+            }
+          });
+
+          // Reset cloned element positioning
+          const clonedCard = clonedDoc.getElementById('id-card');
+          if (clonedCard) {
+            clonedCard.style.position = 'static';
+            clonedCard.style.visibility = 'visible';
+            clonedCard.style.opacity = '1';
+          }
+        },
+      });
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, "image/png", 1.0);
+      });
+
+      if (blob) return blob;
+    } catch (err) {
+      console.warn("html2canvas failed, attempting html-to-image fallback...", err);
+    }
+
+    // Fallback to html-to-image
+    try {
+      const dataUrl = await toJpeg(card, {
+        quality: 0.95,
+        pixelRatio: 2.5,
+        backgroundColor: '#0c5933',
+      });
+      const res = await fetch(dataUrl);
+      return await res.blob();
+    } catch (err) {
+      console.error("All image capture methods failed:", err);
+      return null;
+    }
+  };
+
   const downloadImage = async () => {
-    if (!cardRef.current) return;
-    
     try {
       setIsProcessing(true);
-      // Small delay to ensure fonts/images are rendered
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Safari workaround: call once to warm up the cache
-      try {
-        await toJpeg(cardRef.current, { quality: 0.1, pixelRatio: 1 });
-      } catch (e) { /* ignore */ }
+      const blob = await captureCardPng();
+      if (!blob) {
+        alert("Failed to create ID card image. Please try again.");
+        return;
+      }
 
-      const dataUrl = await toJpeg(cardRef.current, {
-        quality: 1.0,
-        pixelRatio: 3,
-        backgroundColor: '#0c5933',
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left'
-        }
-      });
-      
-      const link = document.createElement('a');
-      link.download = `hh-goa-2026-${name.toLowerCase().replace(/\s+/g, '-') || 'id'}.jpg`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return dataUrl;
+      const fileName = `hh-goa-2026-${name.toLowerCase().replace(/\s+/g, '-') || 'id-pass'}.png`;
+      const imageUrl = URL.createObjectURL(blob);
+
+      const downloadLink = document.createElement("a");
+      downloadLink.href = imageUrl;
+      downloadLink.download = fileName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+
+      URL.revokeObjectURL(imageUrl);
     } catch (err) {
-      console.error('Error generating image', err);
-      alert('Failed to generate image. Please try again.');
+      console.error("Error downloading image:", err);
+      alert("Failed to download ID card image. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const shareToX = async () => {
-    // Generate and download first, then open X
-    await downloadImage();
-    
-    const text = encodeURIComponent(`I'm building at Hacker House Goa 2026! 🌴💻\n\n#FrameInGoa @247pmstudio`);
-    const xUrl = `https://twitter.com/intent/tweet?text=${text}`;
-    
-    // Open X intent in new tab
-    window.open(xUrl, '_blank');
-    
-    // Alert user to attach the downloaded image
-    setTimeout(() => {
-      alert("Your ID card has been downloaded! Don't forget to attach it to your tweet.");
-    }, 500);
+    const card = document.getElementById("id-card");
+    if (!card) {
+      console.error("ID card element not found");
+      return;
+    }
+
+    const button = document.getElementById("twitter-share") as HTMLButtonElement | null;
+    let twitterWindow: Window | null = null;
+
+    const passWebsite = window.location.origin.includes('localhost')
+      ? 'https://hhgoa.com/'
+      : window.location.href;
+    const shareText = `I'm building at Hacker House Goa 2026! 🌴💻\n\n📍 Official Site: https://hhgoa.com/\n🎫 Get Your ID Pass: ${passWebsite}\n\n#FrameInGoa @247pmstudio`;
+    const twitterUrl = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(shareText);
+
+    try {
+      setIsProcessing(true);
+      if (button) {
+        button.disabled = true;
+      }
+
+      // Pre-open window immediately synchronously on click to bypass popup blockers
+      twitterWindow = window.open("about:blank", "_blank");
+
+      const blob = await captureCardPng();
+      const fileName = `hh-goa-2026-${name.toLowerCase().replace(/\s+/g, '-') || 'id-pass'}.png`;
+
+      if (blob) {
+        const file = new File([blob], fileName, { type: "image/png" });
+
+        // 1. Try native mobile share if available
+        if (
+          navigator.share &&
+          navigator.canShare &&
+          navigator.canShare({ files: [file] })
+        ) {
+          try {
+            if (twitterWindow && !twitterWindow.closed) {
+              twitterWindow.close();
+              twitterWindow = null;
+            }
+            await navigator.share({
+              text: shareText,
+              files: [file],
+            });
+            return;
+          } catch (shareErr) {
+            if ((shareErr as Error).name === "AbortError") {
+              return;
+            }
+            console.log("Native share failed or cancelled, using fallback", shareErr);
+          }
+        }
+
+        // 2. Download the PNG image for the user to upload to Twitter
+        const imageUrl = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = imageUrl;
+        downloadLink.download = fileName;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+        URL.revokeObjectURL(imageUrl);
+      }
+
+      // 3. Direct the pre-opened window (or open a new window) to the official Twitter composer URL
+      if (twitterWindow && !twitterWindow.closed) {
+        twitterWindow.location.href = twitterUrl;
+      } else {
+        window.open(twitterUrl, "_blank");
+      }
+
+    } catch (error) {
+      console.error("Twitter share failed:", error);
+      if (twitterWindow && !twitterWindow.closed) {
+        twitterWindow.location.href = twitterUrl;
+      } else {
+        window.open(twitterUrl, "_blank");
+      }
+    } finally {
+      setIsProcessing(false);
+      if (button) {
+        button.disabled = false;
+      }
+    }
   };
 
   const backCard = (
@@ -198,9 +353,19 @@ export default function App() {
           </p>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-black">
-          <QRCode value="https://hhgoa.com/" size={150} />
-        </div>
+        <a 
+          href="https://hhgoa.com/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          title="Visit hhgoa.com"
+          className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-black flex flex-col items-center gap-2 group hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <QRCode value="https://hhgoa.com/" size={140} />
+          <span className="font-['Space_Mono'] text-black text-[10px] font-black tracking-widest uppercase group-hover:text-[#FF007F] transition-colors flex items-center gap-1">
+            hhgoa.com ↗
+          </span>
+        </a>
 
         <div className="text-center w-full space-y-4 font-['Space_Mono'] text-[#FFD700] text-xs md:text-sm font-bold tracking-widest uppercase">
           <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-[#FFD700]/50 to-transparent"></div>
@@ -287,6 +452,143 @@ export default function App() {
 
   return (
     <>
+      {/* Twitter Share Modal */}
+      <AnimatePresence>
+        {shareModalData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setShareModalData(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-950 border-2 border-[#FFD700] rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-[0_25px_60px_rgba(0,0,0,0.9)] text-white relative overflow-hidden flex flex-col gap-6 my-auto"
+            >
+              <button
+                onClick={() => setShareModalData(null)}
+                className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white rounded-full bg-zinc-900 border border-zinc-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
+                <div className="p-3 bg-[#FF007F] rounded-2xl text-white shadow-lg">
+                  <Twitter className="w-6 h-6 fill-current" />
+                </div>
+                <div>
+                  <h3 className="font-['Space_Mono'] font-black text-lg md:text-xl text-[#FFD700] uppercase tracking-wide">
+                    Share to Twitter / X
+                  </h3>
+                  <p className="text-zinc-400 text-xs font-['Space_Mono']">
+                    ID Pass photo captured & ready to tweet!
+                  </p>
+                </div>
+              </div>
+
+              {/* Image Preview & Description */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-zinc-900/80 p-4 rounded-2xl border border-zinc-800">
+                <div className="flex flex-col items-center justify-center bg-black/40 p-2 rounded-xl border border-zinc-800">
+                  <img
+                    src={shareModalData.image}
+                    alt="HH Goa Pass Preview"
+                    className="h-56 object-contain rounded-lg shadow-md"
+                  />
+                  <span className="text-[10px] font-['Space_Mono'] text-[#FFD700] mt-2 font-bold uppercase">
+                    ✓ ID Card Captured
+                  </span>
+                </div>
+
+                <div className="flex flex-col justify-between gap-3 h-full">
+                  <div className="bg-black/60 p-3 rounded-xl border border-zinc-800 font-['Space_Mono'] text-xs text-zinc-300 leading-relaxed relative group">
+                    <pre className="whitespace-pre-wrap font-sans text-xs text-zinc-200">
+                      {shareModalData.shareText}
+                    </pre>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(shareModalData.shareText);
+                        setCopiedText(true);
+                        setTimeout(() => setCopiedText(false), 2000);
+                      }}
+                      className="mt-2 text-[10px] font-['Space_Mono'] uppercase font-bold text-[#FFD700] hover:text-white flex items-center gap-1 bg-zinc-800/80 px-2.5 py-1 rounded border border-zinc-700 transition-colors"
+                    >
+                      {copiedText ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedText ? 'Copied Text!' : 'Copy Caption'}
+                    </button>
+                  </div>
+
+                  <div className="bg-[#FF007F]/10 border border-[#FF007F]/30 p-2.5 rounded-xl text-[11px] font-['Space_Mono'] text-pink-300">
+                    💡 <strong>Quick Attach:</strong>
+                    {shareModalData.copied ? (
+                      <span> Pass image is <strong>copied to your clipboard</strong>! Simply press <strong>Ctrl+V</strong> (or Paste) in Twitter composer.</span>
+                    ) : (
+                      <span> Pass image is <strong>downloaded</strong>! Click the photo icon in Twitter composer to attach it.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a
+                  href={shareModalData.xUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShareModalData(null)}
+                  className="flex-1 bg-gradient-to-r from-[#FF007F] to-pink-600 hover:from-pink-500 hover:to-pink-600 text-white font-['Space_Mono'] font-black py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2.5 shadow-xl hover:shadow-[#FF007F]/40 active:scale-98 transition-all uppercase tracking-wider text-sm text-center"
+                >
+                  <Twitter className="w-5 h-5 fill-current" />
+                  <span>Open Twitter & Post (Ctrl+V)</span>
+                  <ExternalLink className="w-4 h-4 ml-auto" />
+                </a>
+
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.download = shareModalData.fileName;
+                    link.href = shareModalData.image;
+                    link.click();
+                  }}
+                  className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 font-['Space_Mono'] font-bold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[92%] bg-zinc-950 border-2 border-[#FFD700] text-white p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex items-center gap-3.5 backdrop-blur-md"
+          >
+            <div className="bg-[#FF007F] p-2.5 rounded-xl text-white flex-shrink-0 shadow-md">
+              <Twitter className="w-5 h-5 fill-current" />
+            </div>
+            <div className="flex-1 text-xs md:text-sm font-['Space_Mono'] font-bold text-zinc-100 leading-snug">
+              {toastMessage}
+            </div>
+            <button 
+              onClick={() => setToastMessage(null)}
+              className="text-zinc-400 hover:text-white p-1 flex-shrink-0 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showIntro && (
           <motion.div
@@ -665,9 +967,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Hidden 2D Export Card for clean screenshots without 3D transforms */}
-              <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none -z-50">
-                <div ref={cardRef} className="w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center relative overflow-visible">
+              {/* Export Card for clean screenshots without 3D transforms */}
+              <div style={{ position: 'fixed', top: 0, left: 0, zIndex: -9999, opacity: 1, pointerEvents: 'none' }}>
+                <div id="id-card" ref={cardRef} className="w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center relative overflow-visible p-2">
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="flex flex-col items-center relative z-20 drop-shadow-2xl">
                       <div className="w-16 h-48 bg-[#FF007F] absolute bottom-full mb-[-15px] rounded-t-sm bg-gradient-to-t from-pink-800 to-[#FF007F] border-x border-pink-900 shadow-inner overflow-hidden">
@@ -684,7 +986,7 @@ export default function App() {
                          <div className="w-4 h-3 border-2 border-zinc-800/40 rounded-b-lg border-t-0 shadow-sm"></div>
                       </div>
                     </div>
-                    {frontCard}
+                    {isFlipped ? backCard : frontCard}
                   </div>
                 </div>
               </div>
@@ -693,7 +995,7 @@ export default function App() {
               <div className="flex flex-col gap-3 w-full max-w-[450px]">
                 <button 
                   onClick={() => setIsFlipped(!isFlipped)}
-                  className="w-full bg-black/60 text-[#FFD700] hover:bg-black/90 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/30 shadow-lg"
+                  className="w-full bg-black/60 text-[#FFD700] hover:bg-black/90 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/30 shadow-lg cursor-pointer"
                 >
                   <Rotate3D className="w-5 h-5" />
                   {isFlipped ? "Show Front Side" : "Flip to Back Side"}
@@ -701,21 +1003,22 @@ export default function App() {
                 <div className="flex gap-3 w-full">
                   <button 
                     onClick={downloadImage}
-                  disabled={!photoUrl || isProcessing}
-                  className="flex-1 bg-[#FFD700] text-[#0c5933] hover:bg-white disabled:bg-black/40 disabled:text-white/30 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/50 disabled:border-transparent shadow-lg"
-                >
-                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                  {isProcessing ? 'Processing...' : 'Download ID'}
-                </button>
-                <button 
-                  onClick={shareToX}
-                  disabled={!photoUrl || isProcessing}
-                  className="flex-1 bg-black text-[#FFD700] hover:bg-black/80 disabled:bg-black/40 disabled:text-white/30 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/50 disabled:border-transparent shadow-lg"
-                >
-                  <Twitter className="w-5 h-5" />
-                  Share to X
-                </button>
-              </div>
+                    disabled={!photoUrl || isProcessing}
+                    className="flex-1 bg-[#FFD700] text-[#0c5933] hover:bg-white disabled:bg-black/40 disabled:text-white/30 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/50 disabled:border-transparent shadow-lg cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                    {isProcessing ? 'Preparing...' : 'Download ID'}
+                  </button>
+                  <button 
+                    id="twitter-share"
+                    onClick={shareToX}
+                    disabled={!photoUrl || isProcessing}
+                    className="flex-1 bg-black text-[#FFD700] hover:bg-black/80 disabled:bg-black/40 disabled:text-white/30 font-bold uppercase tracking-widest py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 border border-[#FFD700]/50 disabled:border-transparent shadow-lg cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Twitter className="w-5 h-5" />}
+                    {isProcessing ? 'Preparing...' : 'Share on X'}
+                  </button>
+                </div>
               {!photoUrl && (
                 <p className="text-center text-xs text-[#FFD700]/70 mt-3 font-bold uppercase tracking-widest w-full max-w-[450px]">Upload a photo to unlock actions</p>
               )}
