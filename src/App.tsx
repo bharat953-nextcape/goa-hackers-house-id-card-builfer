@@ -184,7 +184,7 @@ export default function App() {
   };
 
   const backCard = (
-    <div className="w-[420px] h-[580px] md:w-[440px] md:h-[600px] rounded-[32px] shadow-[0_30px_70px_rgba(0,0,0,0.85)] relative overflow-hidden -mt-4 border-[6px] border-black flex flex-col justify-between pt-16 p-8 bg-[url('https://i.ibb.co/6JN3Lg8q/270dada5-8d44-4afd-a060-78cc270afcb1.png')] bg-cover bg-center">
+    <div className="w-[420px] h-[640px] md:w-[440px] md:h-[660px] rounded-[32px] shadow-[0_30px_70px_rgba(0,0,0,0.85)] relative overflow-hidden -mt-4 border-[6px] border-black flex flex-col justify-between pt-16 p-8 bg-[url('https://i.ibb.co/6JN3Lg8q/270dada5-8d44-4afd-a060-78cc270afcb1.png')] bg-cover bg-center">
       <div className="absolute inset-0 bg-[#0c5933]/60 mix-blend-multiply pointer-events-none"></div>
       <div className="absolute top-0 right-0 w-72 h-72 bg-[#117643] rounded-full blur-[80px] -mr-20 -mt-20 opacity-60"></div>
       <div className="absolute bottom-0 left-0 w-72 h-72 bg-pink-500/25 rounded-full blur-[100px] -ml-20 -mb-20"></div>
@@ -215,10 +215,10 @@ export default function App() {
   );
 
   const frontCard = (
-    <div className="w-[420px] h-[580px] md:w-[440px] md:h-[600px] rounded-[32px] shadow-[0_30px_70px_rgba(0,0,0,0.85)] relative overflow-hidden -mt-4 border-[6px] border-black flex flex-col justify-between bg-[url('https://i.ibb.co/6JN3Lg8q/270dada5-8d44-4afd-a060-78cc270afcb1.png')] bg-cover bg-center">
+    <div className="w-[420px] h-[640px] md:w-[440px] md:h-[660px] rounded-[32px] shadow-[0_30px_70px_rgba(0,0,0,0.85)] relative overflow-hidden -mt-4 border-[6px] border-black flex flex-col justify-between bg-[url('https://i.ibb.co/6JN3Lg8q/270dada5-8d44-4afd-a060-78cc270afcb1.png')] bg-cover bg-center">
       <div className="absolute inset-0 bg-[#0c5933]/60 mix-blend-multiply pointer-events-none"></div>
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-90">
-        <PremiumGraphic emoji="🛟" className="text-8xl -bottom-8 -right-6" />
+        <PremiumGraphic emoji="🛟" className="text-6xl -bottom-10 -right-8 opacity-40 pointer-events-none" />
         <PremiumGraphic emoji="🥥" className="text-7xl top-12 -left-4 opacity-90" />
         <PremiumGraphic emoji="👒" className="text-7xl top-44 -right-2 opacity-90" />
         <PremiumGraphic emoji="🦀" className="text-6xl bottom-24 left-4" />
@@ -278,9 +278,9 @@ export default function App() {
       </div>
 
       {/* Card Footer */}
-      <div className="pb-4 px-6 flex justify-between items-end z-10 font-['Space_Mono'] text-xs font-bold text-white/80 tracking-widest uppercase">
-        <span>2:47 PM STUDIO</span>
-        <span className="text-[#FFD700]">#FrameInGoa</span>
+      <div className="pb-5 px-6 flex justify-between items-end z-20 font-['Space_Mono'] text-xs font-bold text-white tracking-widest uppercase">
+        <span className="text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">2:47 PM STUDIO</span>
+        <span className="text-[#FFD700] font-black bg-black/50 px-2.5 py-1 rounded border border-[#FFD700]/40 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">#FrameInGoa</span>
       </div>
     </div>
   );
@@ -442,7 +442,8 @@ export default function App() {
                 crop={crop}
                 zoom={zoom}
                 aspect={1}
-                cropShape="round"
+                cropShape="rect"
+                showGrid={true}
                 onCropChange={setCrop}
                 onCropComplete={onCropComplete}
                 onZoomChange={setZoom}
@@ -604,7 +605,7 @@ export default function App() {
                     transition={{ type: "spring", damping: 15, stiffness: 80 }}
                   >
                     <motion.div 
-                      className="w-[450px] h-[670px] select-none relative cursor-pointer"
+                      className="w-[450px] h-[730px] select-none relative cursor-pointer"
                       onClick={() => setIsFlipped(!isFlipped)}
                       animate={{ rotateY: isFlipped ? 180 : 0 }}
                       transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
@@ -612,7 +613,7 @@ export default function App() {
                     >
                     {/* Front Face (includes Lanyard and FrontCard) */}
                     <div 
-                      className="absolute inset-0 w-[450px] h-[670px] bg-transparent flex flex-col items-center justify-center overflow-visible"
+                      className="absolute inset-0 w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center overflow-visible"
                       style={{ backfaceVisibility: 'hidden' }}
                     >
                       <div className="relative z-10 flex flex-col items-center">
@@ -637,7 +638,7 @@ export default function App() {
 
                     {/* Back Face (includes Lanyard and BackCard) */}
                     <div 
-                      className="absolute inset-0 w-[450px] h-[670px] bg-transparent flex flex-col items-center justify-center overflow-visible"
+                      className="absolute inset-0 w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center overflow-visible"
                       style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
                     >
                       <div className="relative z-10 flex flex-col items-center">
@@ -666,7 +667,7 @@ export default function App() {
 
               {/* Hidden 2D Export Card for clean screenshots without 3D transforms */}
               <div className="absolute top-[-9999px] left-[-9999px] pointer-events-none -z-50">
-                <div ref={cardRef} className="w-[450px] h-[670px] bg-transparent flex flex-col items-center justify-center relative overflow-visible">
+                <div ref={cardRef} className="w-[450px] h-[730px] bg-transparent flex flex-col items-center justify-center relative overflow-visible">
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="flex flex-col items-center relative z-20 drop-shadow-2xl">
                       <div className="w-16 h-48 bg-[#FF007F] absolute bottom-full mb-[-15px] rounded-t-sm bg-gradient-to-t from-pink-800 to-[#FF007F] border-x border-pink-900 shadow-inner overflow-hidden">
